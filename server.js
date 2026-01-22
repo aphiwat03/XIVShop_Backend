@@ -1,51 +1,59 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const cors = require("cors");
+const { User, sequelize } = require("./database.js");
 
-const app = express();
-app.use(express.json()); // ให้ Express อ่าน JSON ได้
-app.use(cors()); // อนุญาตให้ React (หน้าบ้าน) เชื่อมต่อได้
+const myapp = express();
+const port = 5000;
+const bcrypt = require("bcryptjs");
+myapp.use(express.json());
+myapp.use(cors());
 
-// ตัวแปรสมมติแทน Database (ในงานจริงให้ใช้ MySQL/MongoDB ที่คุยกันก่อนหน้า)
-const users = [];
-const SECRET_KEY = "my_super_secret_key"; // ใช้สำหรับสร้าง Token
-
-// --- 1. ระบบสมัครสมาชิก (Sign Up) ---
-app.post("/signup", async (req, res) => {
+myapp.get("/users", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // 1. เข้ารหัส Password ก่อนเก็บ
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // 2. เก็บลง "Database" (ตัวแปร users)
-    users.push({ email, password: hashedPassword });
-
-    res.status(201).send({ message: "สมัครสมาชิกสำเร็จ!" });
+    const allUsers = await User.findAll();
+    res.json(allUsers);
   } catch (err) {
-    res.status(500).send({ message: "เกิดข้อผิดพลาด" });
+    res
+      .status(500)
+      .json({ message: "Error fetching users", error: err.message });
   }
 });
 
-// --- 2. ระบบเข้าสู่ระบบ (Sign In) ---
-app.post("/signin", async (req, res) => {
-  const { email, password } = req.body;
-
-  // 1. ค้นหา User จาก Email
-  const user = users.find((u) => u.email === email);
-  if (!user) return res.status(400).send({ message: "ไม่พบผู้ใช้งาน" });
-
-  // 2. ตรวจสอบรหัสผ่าน (เทียบรหัสสด กับ รหัสที่ Hash ใน DB)
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(400).send({ message: "รหัสผ่านไม่ถูกต้อง" });
-
-  // 3. สร้าง JWT Token ส่งกลับไปให้หน้าบ้าน (React) เก็บไว้
-  const token = jwt.sign({ email: user.email }, SECRET_KEY, {
-    expiresIn: "1h",
-  });
-
-  res.json({ message: "ล็อกอินสำเร็จ", token });
+myapp.get("/", (req, res) => {
+  res.send("Server is ready! Go to /users to see data.");
 });
 
-app.listen(5000, () => console.log("Backend running on port 5000"));
+myapp.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}/`);
+});
+
+myapp.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // 1. ค้นหา User จาก Email
+    const user = await User.findOne({ where: { email: email } });
+
+    if (!user) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้งานนี้ในระบบ" });
+    }
+
+    // 2. ตรวจสอบรหัสผ่าน (ถ้าตอนสมัครใช้ bcrypt.hash ตอนเช็คต้องใช้ bcrypt.compare)
+    // สมมติว่าตอนนี้ใน SQL คุณยังเป็นรหัสผ่านตัวธรรมดา ให้เช็คแบบตรงๆ ไปก่อน
+    const isMatch = password === user.password;
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+    }
+
+    // 3. ถ้าผ่านหมด
+    res.json({
+      message: "เข้าสู่ระบบสำเร็จ!",
+      user: { username: user.username, email: user.email },
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดที่ Server", error: err.message });
+  }
+});
