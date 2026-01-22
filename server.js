@@ -31,22 +31,16 @@ myapp.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. ค้นหา User จาก Email
     const user = await User.findOne({ where: { email: email } });
 
     if (!user) {
       return res.status(404).json({ message: "ไม่พบผู้ใช้งานนี้ในระบบ" });
     }
-
-    // 2. ตรวจสอบรหัสผ่าน (ถ้าตอนสมัครใช้ bcrypt.hash ตอนเช็คต้องใช้ bcrypt.compare)
-    // สมมติว่าตอนนี้ใน SQL คุณยังเป็นรหัสผ่านตัวธรรมดา ให้เช็คแบบตรงๆ ไปก่อน
     const isMatch = password === user.password;
 
     if (!isMatch) {
       return res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
     }
-
-    // 3. ถ้าผ่านหมด
     res.json({
       message: "เข้าสู่ระบบสำเร็จ!",
       user: { username: user.username, email: user.email },
@@ -55,5 +49,30 @@ myapp.post("/api/login", async (req, res) => {
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดที่ Server", error: err.message });
+  }
+});
+
+myapp.post("/api/register", async (req, res) => {
+  try {
+    const { email, username, password, phone } = req.body;
+
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "อีเมลนี้ถูกใช้งานแล้ว" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      email,
+      username,
+      password: hashedPassword,
+      phone,
+      role: "user",
+    });
+
+    res.status(201).json({ message: "สมัครสมาชิกสำเร็จ!", user: newUser });
+  } catch (err) {
+    res.status(500).json({ message: "เกิดข้อผิดพลาด", error: err.message });
   }
 });
